@@ -29,6 +29,7 @@ import json                  # json
 import pickle                # serialization
 
 import subprocess as sp      # unused in this impl
+from functools import cmp_to_key
 
 from mr_thread import MR_Thread  # our Map Reduce threading class
 
@@ -98,7 +99,7 @@ def barrier_sink (args):
 
                 # write all the entries into the csv file
                 for j in range (len(map_resp)):
-                    map_file.write (map_resp[j]['token'] + str (",") + str(map_resp[j]['val']) + "\n")
+                    map_file.write (str(map_resp[j]['token']) + str (";") + str(map_resp[j]['val']) + "\n")
                 # close the file
                 map_file.close ()
                 
@@ -111,7 +112,7 @@ def barrier_sink (args):
 
                 # write the csv entries to the file.
                 for j in range (len(reduce_resp)):
-                    reduce_file.write (reduce_resp[j]['token'] + str (",") + str(reduce_resp[j]['val']) + "\n")
+                    reduce_file.write(reduce_resp[j]['token'] + ';' + str(reduce_resp[j]['val']['avg_work']) + ';' + str(reduce_resp[j]['val']['avg_load']) + "\n")
                     
                 # close the file
                 reduce_file.close ()
@@ -326,6 +327,7 @@ class MR_Framework ():
         # are going to send to the workers so that each worker can process it
 
         try:
+            '''
             # initialize the argument data structure that we plan to send to
             # our workers. The data structure we are passing to the workers
             # comprises the name of the datafile, the starting byte from the
@@ -375,10 +377,57 @@ class MR_Framework ():
             print ("MR::solve - master done sending args to {} map workers:".format(self.M))
             # close the file after the loop
             datafile.close ()
+            '''
+
+            # initialize the argument data structure that we plan to send to
+            # our workers. The data structure we are passing to the workers
+            # comprises the name of the datafile, the starting line from the
+            # file to read and the number of lines to read.
+
+            data = open(self.datafile, 'r')
+            line_count = 0
+
+            for line in data:
+                line_count += 1
+
+            data = open(self.datafile, 'r')
+            content = ''
+            line_size = int(round(line_count / self.M))
+            cur_map = 0
+
+            print "doc lines = ", line_count, ", line size = ", line_size
+            print ("MR::solve - master sending args to {} map workers:".format(self.M))
+
+            for i, line in enumerate(data):
+                content = content + line
+
+                if cur_map < self.M:
+                    if i != 0 and i % self.M == 0:
+                        self._send_to_map(cur_map, line_size, content)
+                        cur_map += 1
+                        content = ''
+                else:
+                    if i == line_count - 1:
+                        line_size = line_count - (cur_map - 1) * line_size
+                        self._send_to_map(cur_map, line_size, content)
+                        cur_map += 1
+                        content = ''
+            
+            print ("MR::solve - master done sending args to {} map workers:".format(self.M))
+            data.close()
             
         except:
             print "Unexpected error in distribute_map_tasks:", sys.exc_info()[0]
             raise
+
+    def _send_to_map(self, map_id, line_size, content):
+        map_arg = {
+            'id': map_id,
+            'size': line_size,
+            'content': content
+        }
+
+        self.sender4map.send_json(map_arg)
 
     #/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
     # @NOTE@: changes maybe needed here for the Assignment
@@ -417,6 +466,14 @@ class MR_Framework ():
             print "Unexpected error in distribute_reduce_tasks:", sys.exc_info()[0]
             raise
 
+    def _cmp_func(self, x, y):
+        valx = tuple(map(int, re.findall(r'[0-9]+', x[0])))
+        valy = tuple(map(int, re.findall(r'[0-9]+', y[0])))
+        if valx[0] == valy[0]:
+            return valx[2] - valy[2] if valx[1] == valy[1] else valx[1] - valy[1]
+        else:
+            return valx[0] - valy[0]
+
     #/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
     # @NOTE@: changes will needed here for Assignment
     #
@@ -450,12 +507,12 @@ class MR_Framework ():
         # Note that the map csv files are numbered Map0.csv, Map1.csv, ...
         for i in range (self.M):
             # open the CVS file created by map job
-            csvfile = csv.reader (open ("Map"+str(i)+".csv", "r"), delimiter=",")
+            csvfile = csv.reader(open ("Map"+str(i)+".csv", "r"), delimiter=";")
             
             # get the sorted list of entries from our csv file using
             # column 1 (0-based indexing) as the key to sort on
             # and we use traditional alphabetic order
-            wordlist = sorted (csvfile, key=operator.itemgetter (0))
+            vallist = sorted(csvfile, key=cmp_to_key(self._cmp_func))
 
             # Now group all entries by the unique identified words and perform
             # local combiner optimization (because it is addition, which is
@@ -463,20 +520,14 @@ class MR_Framework ():
             # the reduction here itself but leave it to the reduce tasks.
             groups = []
             uniquekeys = []
-            for k, g in itertools.groupby (wordlist, key=operator.itemgetter (0)):
-                groups.append (list (g))
-                uniquekeys.append (k)
+            for k, g in itertools.groupby (vallist, key=operator.itemgetter(0)):
+                groups.append([val[1] for val in g])
+                uniquekeys.append(k)
 
             # now for each unique key, create the data to be sent to
             # the reducers
             for j in range (len (uniquekeys)):
-                tempfile.write (uniquekeys[j] + ", ")
-                # note that for each unique word, we have a grouped
-                # list, and each value is 1. So the length of the
-                # sublist is the sum, which represents the combiner
-                # optimization reduction for that unique key.
-                # We save that info
-                tempfile.write (str (len (groups[j])) + "\n")
+                tempfile.write(str(uniquekeys[j]) + ";" + "?".join(groups[j]) + "\n")
 
             # Delete the intermediate Map file (no need for it anymore)
             os.remove ("Map"+str(i)+".csv")
@@ -487,24 +538,24 @@ class MR_Framework ():
         # Now group all the entries in sorted order so that we can hand them
         # out to reduce tasks. For that, open the temp CSV file we just
         # created
-        csvfile = csv.reader (open ("temp.csv", "rb"), delimiter=",")
+        csvfile = csv.reader(open ("temp.csv", "rb"), delimiter=";")
 
         # We need the following because otherwise the csv treats everything
         # as text and so our numbers are getting converted to strings
-        rows = [[row[0], int(row[1])] for row in csvfile]
+        rows = [[row[0], row[1]] for row in csvfile]
         
         # get the sorted list of entries from our csv file using
         # column 1 (0-based indexing used here) as the key to sort on
         # and we use traditional alphabetic order.  
-        wordlist = sorted (rows, key=operator.itemgetter (0))
+        vallist = sorted(rows, key=cmp_to_key(self._cmp_func))
         
         # Identify the total number of unique keys we have in our data
         # We need this info to make a split in the Shuffle file to hand out
         # to reduce tasks. We create as many intermediate shuffle files
         # as the number of readers we have
-        for k, g in itertools.groupby (wordlist, key=operator.itemgetter (0)):
-            self.groups.append (list (g))
-            self.uniquekeys.append (k)
+        for k, g in itertools.groupby (vallist, key=operator.itemgetter(0)):
+            self.groups.append(list(g))
+            self.uniquekeys.append(k)
 
         print "MR::shuffle - Total unique keys = ", len (self.uniquekeys)
 

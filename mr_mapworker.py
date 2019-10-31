@@ -110,6 +110,7 @@ class MR_Map ():
     def do_work (self):
         """ Word count map function """
 
+        '''
         # recall that the master broadcasts the map or reduce message
         # via the PUSH.  Receive the information from the master and
         # process it
@@ -160,6 +161,40 @@ class MR_Map ():
         # self.results_sender.close ()
         
         print "map worker with ID: ", self.id, " work is performed"
+        '''
+
+        json = self.receiver.recv_json()
+        print "map received json message"
+
+        self.id = json['id']
+        content = json['content']
+
+        print "do_work: map worker received id: ", self.id
+
+        intmed_kv_list = []
+
+        for line in content.splitlines():
+            values = line.split(',')
+            if len(values) == 7:
+                measure_id = int(values[0])
+                timestamp = int(values[1])
+                measurement = float(values[2])
+                prop = int(values[3])
+                plug_id = int(values[4])
+                household_id = int(values[5])
+                house_id = int(values[6])
+
+                unique_id = (house_id, household_id, plug_id)
+                intmed_kv_list.append({
+                    'token': unique_id,
+                    'val': (prop, measurement)
+                })
+        
+        self.results_sender.send_json(intmed_kv_list)
+        self.results_sender.close()
+
+        print "map worker with ID: ", self.id, " work is performed"
+
 
 ##################################
 # Command line parsing

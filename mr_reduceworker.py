@@ -109,6 +109,8 @@ class MR_Reduce ():
     #/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\
     #------------------------------------------
     def do_work (self):
+
+        '''
         """ Word count reduce function """
         print "starting work: reduce worker, working directory = ", os.getcwd()
 
@@ -139,6 +141,44 @@ class MR_Reduce ():
 
         time.sleep (5)
         print "reduce worker has completed its work"
+        '''
+
+        print "starting work: reduce worker, working directory = ", os.getcwd()
+        
+        content = self.receiver.recv_json()
+        print("Reducer processing content: ")
+        key_val_list = []
+
+        for item in content:
+            print(item)
+            total_work = 0.0
+            total_load = 0.0
+            works = 0
+            loads = 0
+
+            values = item[0][1].split('?')
+            
+            for v in values:
+                val_tuple = tuple(map(float, v.replace('(','').replace(')','').split(',')))
+                if val_tuple[0] == 0.0:
+                    total_work += val_tuple[1]
+                    works += 1
+                elif val_tuple[0] == 1.0:
+                    total_load += val_tuple[1]
+                    loads += 1
+            
+            key_val_list.append({
+                'token': item[0][0],
+                'val' : {
+                    'avg_work': total_work / works if works != 0 else 0,
+                    'avg_load': total_load / loads if loads != 0 else 0
+                }
+            })
+
+        self.results_sender.send_json(key_val_list)
+        time.sleep(5)
+        print "reduce worker has completed its work"
+            
 
 ##################################
 # Command line parsing
