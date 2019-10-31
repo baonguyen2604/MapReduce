@@ -146,7 +146,7 @@ class MR_Reduce ():
         print "starting work: reduce worker, working directory = ", os.getcwd()
         
         content = self.receiver.recv_json()
-        print("Reducer processing content: ")
+        print "Reducer processing content: ", content
         key_val_list = []
 
         for item in content:
@@ -157,9 +157,11 @@ class MR_Reduce ():
             loads = 0
 
             values = item[0][1].split('?')
+            print len(values)
             
             for v in values:
-                val_tuple = tuple(map(float, v.replace('(','').replace(')','').split(',')))
+                print v
+                val_tuple = tuple(map(float, v.replace('[','').replace(']','').split(',')))
                 if val_tuple[0] == 0.0:
                     total_work += val_tuple[1]
                     works += 1

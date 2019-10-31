@@ -191,7 +191,7 @@ class MR_Map ():
                 })
         
         self.results_sender.send_json(intmed_kv_list)
-        self.results_sender.close()
+        # self.results_sender.close()
 
         print "map worker with ID: ", self.id, " work is performed"
 
