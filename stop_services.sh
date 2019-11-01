@@ -7,5 +7,5 @@
 #
 # Purpose: Script to stop the services
 #
-docker service rm MyMR_Master MyMR_Map MyMR_Reduce
+docker service rm MR_Map MR_Reduce
 

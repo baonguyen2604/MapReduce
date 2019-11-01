@@ -150,17 +150,14 @@ class MR_Reduce ():
         key_val_list = []
 
         for item in content:
-            print(item)
             total_work = 0.0
             total_load = 0.0
             works = 0
             loads = 0
 
             values = item[0][1].split('?')
-            print len(values)
-            
+
             for v in values:
-                print v
                 val_tuple = tuple(map(float, v.replace('[','').replace(']','').split(',')))
                 if val_tuple[0] == 0.0:
                     total_work += val_tuple[1]
