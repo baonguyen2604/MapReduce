@@ -156,7 +156,6 @@ class MR_Reduce ():
             loads = 0
 
             values = item[0][1].split('?')
-
             for v in values:
                 val_tuple = tuple(map(float, v.replace('[','').replace(']','').split(',')))
                 if val_tuple[0] == 0.0:
